@@ -1,7 +1,7 @@
 {
   "name": "kataga-marketplace-voting",
   "version": "1.0.0",
-  "description": "KATAGA Marketplace Name Voting System - local voting app with SQLite",
+  "description": "KATAGA Marketplace Name Voting System - voting app with Supabase PostgreSQL",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

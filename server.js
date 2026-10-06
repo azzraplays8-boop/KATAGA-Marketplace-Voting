@@ -281,7 +281,8 @@ app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adm
   }
   console.log('');
   console.log(`  Admin dashboard: http://localhost:${PORT}/admin`);
-  console.log('  Database file:   data/votes.db');
+  console.log('  Database:        Supabase PostgreSQL (via DATABASE_URL)');
   console.log('  Press Ctrl+C to stop the server.');
   console.log('======================================================');
-});
+  });
+})();
