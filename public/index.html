@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KATAGA Marketplace Name Voting</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo-badge" aria-hidden="true">KA</div>
+      <div>
+        <h1>KATAGA Marketplace Name Voting</h1>
+        <p class="tagline">Choose exactly TWO (2) names that you think best represent the KATAGA Marketplace.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card intro-card">
+      <p class="rule">🗳️ <strong>One response per person.</strong> Your full name can only be used once.</p>
+      <form id="voteForm" autocomplete="off">
+        <label class="field-label" for="fullName">Your Full Name</label>
+        <input type="text" id="fullName" name="fullName" maxlength="80"
+               placeholder="e.g. Juan Dela Cruz" required aria-describedby="nameHint" />
+        <p class="hint" id="nameHint">Your name is used to make sure each person votes only once.</p>
+
+        <h2 class="section-title">Marketplace Name Options</h2>
+        <p class="hint">Tap a card to select it. Tap again to deselect. <span id="counter" class="counter" aria-live="polite">Selected: 0/2</span></p>
+
+        <div id="options" class="options-grid" role="group" aria-label="Marketplace name options"></div>
+
+        <div class="actions">
+          <button type="button" id="clearBtn" class="btn btn-ghost" disabled>Clear selection</button>
+          <button type="submit" id="submitBtn" class="btn btn-primary" disabled>Submit My Vote</button>
+        </div>
+        <p id="formError" class="error-msg" role="alert" hidden></p>
+      </form>
+    </section>
+  </main>
+
+  <!-- Confirmation modal -->
+  <div class="modal-overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+    <div class="modal">
+      <h2 id="confirmTitle">Confirm Your Vote</h2>
+      <p>Please double-check your two choices:</p>
+      <ul id="confirmList" class="confirm-list"></ul>
+      <p class="hint">⚠️ You cannot change your vote after submitting.</p>
+      <div class="modal-actions">
+        <button type="button" id="cancelBtn" class="btn btn-ghost">Go Back</button>
+        <button type="button" id="confirmBtn" class="btn btn-primary">Yes, Submit Vote</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success state -->
+  <div class="modal-overlay" id="successModal" role="dialog" aria-modal="true" hidden>
+    <div class="modal success-modal">
+      <div class="success-icon" aria-hidden="true">✔</div>
+      <h2>Vote Submitted!</h2>
+      <p id="successMsg">Thank you for helping choose the name of the KATAGA Marketplace!</p>
+      <div class="modal-actions">
+        <button type="button" id="closeSuccessBtn" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <p>KATAGA Marketplace · Name Voting System · One response per person</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

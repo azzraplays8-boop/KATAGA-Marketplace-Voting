@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin · KATAGA Marketplace Name Voting</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header admin-header">
+    <div class="header-inner">
+      <div class="logo-badge" aria-hidden="true">KA</div>
+      <div>
+        <h1>Admin Dashboard</h1>
+        <p class="tagline">KATAGA Marketplace Name Voting — Results</p>
+      </div>
+      <button id="logoutBtn" class="btn btn-ghost logout-btn" hidden>Log out</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Login -->
+    <section id="loginSection" class="card login-card">
+      <h2>Admin Login</h2>
+      <p class="hint">Enter the admin password to view voting results.</p>
+      <form id="loginForm">
+        <label class="field-label" for="password">Admin Password</label>
+        <input type="password" id="password" required placeholder="Admin password" />
+        <p id="loginError" class="error-msg" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block">Log In</button>
+      </form>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="dashboard" hidden>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value" id="statRespondents">0</span>
+          <span class="stat-label">Total Respondents</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="statVotes">0</span>
+          <span class="stat-label">Total Votes Cast</span>
+        </div>
+        <div class="stat-card top-card">
+          <span class="stat-value top-names" id="statTop2">—</span>
+          <span class="stat-label">Current Top 2</span>
+        </div>
+      </div>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Results Ranking <span class="count-pill" id="respondentCountTop"></span></h2>
+          <div class="card-actions">
+            <input type="search" id="searchBox" placeholder="Search respondents by name…" aria-label="Search respondents by name" />
+            <button id="exportBtn" class="btn btn-primary">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div id="resultsList" class="results-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>All Respondents <span class="count-pill" id="respondentCount">0</span></h2>
+        <div class="table-wrap">
+          <table class="respondents-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Full Name</th>
+                <th>Choice 1</th>
+                <th>Choice 2</th>
+                <th>Date &amp; Time Submitted</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="respondentsBody"></tbody>
+          </table>
+        </div>
+        <p id="noMatch" class="hint" hidden>No respondents match your search.</p>
+      </section>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>KATAGA Marketplace Voting System · Admin</p>
+  </footer>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
