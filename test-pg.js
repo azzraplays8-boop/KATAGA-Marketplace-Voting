@@ -59,7 +59,7 @@ function req(method, path, body, headers = {}) {
 
   // TEST 4/5: valid submission persists to PostgreSQL
   t('valid vote accepted 200', (await req('POST', '/api/vote', { fullName: '  Juan   Dela Cruz  ', choices: ['KatagaFinds', 'KATAMBAY'] })).status === 200);
-  const row = memDb.public.query('select * from votes');
+  const row = memDb.public.query('select * from votes').rows;
   t('row persisted: normalized_name, cleaned full_name, choices, timestamp',
     row.length === 1 && row[0].normalized_name === 'juan dela cruz' && row[0].full_name === 'Juan Dela Cruz' &&
     row[0].choice_1 === 'KatagaFinds' && !!row[0].submitted_at);
@@ -71,7 +71,7 @@ function req(method, path, body, headers = {}) {
 
   // race-condition simulation: raw insert violating unique index must fail
   let race = false;
-  try { memDb.public.query(`insert into votes (full_name, normalized_name, choice_1, choice_2) values ('X','JUAN DELA CRUZ','a','b')`); } catch { race = true; }
+  try { memDb.public.query(`insert into votes (full_name, normalized_name, choice_1, choice_2) values ('X','juan dela cruz','a','b')`); } catch { race = true; }
   t('DB-level unique constraint blocks race insert', race);
 
   t('/api/check detects duplicate', (await req('GET', '/api/check?name=juan%20dela%20cruz')).json.voted === true);
