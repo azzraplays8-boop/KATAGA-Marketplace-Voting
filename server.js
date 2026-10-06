@@ -2,28 +2,44 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const os = require('os');
-const fs = require('fs');
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'kataga2025';
 
-// ---------- Database setup (local SQLite file, persists across restarts) ----------
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-const db = new DatabaseSync(path.join(dataDir, 'votes.db'));
+// ---------- Database setup (Supabase PostgreSQL via DATABASE_URL) ----------
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error('FATAL: DATABASE_URL is not set. Add it to .env or your hosting environment.');
+  process.exit(1);
+}
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS votes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name TEXT NOT NULL,
-    name_key TEXT NOT NULL UNIQUE,
-    choice1 TEXT NOT NULL,
-    choice2 TEXT NOT NULL,
-    submitted_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-  );
-`);
+// Supabase requires SSL. rejectUnauthorized:false allows the session pooler's
+// certificate chain to be accepted even when intermediates are not sent.
+const needsSsl = /supabase\.(co|com)|pooler\.supabase/i.test(connectionString) || process.env.PGSSL === 'require';
+const pool = new Pool({
+  connectionString,
+  ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
+
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS votes (
+      id             BIGSERIAL PRIMARY KEY,
+      full_name      TEXT NOT NULL,
+      normalized_name TEXT NOT NULL,
+      choice_1       TEXT NOT NULL,
+      choice_2       TEXT NOT NULL,
+      submitted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Database-level duplicate protection (race-condition safe)
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS votes_normalized_name_unique ON votes (normalized_name)');
+}
 
 const OFFICIAL_NAMES = [
   'KatagaFinds',
@@ -67,7 +83,7 @@ app.get('/api/names', (req, res) => {
 });
 
 // ---------- API: submit a vote ----------
-app.post('/api/vote', (req, res) => {
+app.post('/api/vote', async (req, res) => {
   try {
     const fullName = typeof req.body.fullName === 'string' ? req.body.fullName.trim().replace(/\s+/g, ' ') : '';
     const { choices } = req.body;
@@ -90,33 +106,40 @@ app.post('/api/vote', (req, res) => {
 
     const nameKey = normalizeName(fullName);
 
-    // prevent double voting (also guards double clicks via UNIQUE name_key)
-    const existing = db.prepare('SELECT id FROM votes WHERE name_key = ?').get(nameKey);
-    if (existing) {
+    // prevent double voting (also guards double clicks via UNIQUE index)
+    const existing = await pool.query('SELECT id FROM votes WHERE normalized_name = $1', [nameKey]);
+    if (existing.rowCount > 0) {
       return res.status(409).json({
         error: `A vote has already been recorded under the name "${fullName}". One response per person — thank you for participating!`
       });
     }
 
-    db.prepare('INSERT INTO votes (full_name, name_key, choice1, choice2) VALUES (?, ?, ?, ?)')
-      .run(fullName, nameKey, c1, c2);
+    await pool.query(
+      'INSERT INTO votes (full_name, normalized_name, choice_1, choice_2) VALUES ($1, $2, $3, $4)',
+      [fullName, nameKey, c1, c2]
+    );
 
     res.json({ ok: true, message: 'Your vote has been recorded. Thank you for voting!' });
   } catch (err) {
-    if (/UNIQUE constraint/i.test(err && err.message)) {
+    if (err && err.code === '23505') { // unique_violation – race-safe duplicate rejection
       return res.status(409).json({ error: 'A vote has already been recorded under that name. One response per person.' });
     }
-    console.error(err);
+    console.error('POST /api/vote failed:', err.code || '', err.message);
     res.status(500).json({ error: 'Something went wrong while saving your vote. Please try again.' });
   }
 });
 
 // ---------- API: check if a name has already voted (friendly pre-check) ----------
-app.get('/api/check', (req, res) => {
-  const name = (req.query.name || '').toString();
-  if (!name) return res.json({ voted: false });
-  const row = db.prepare('SELECT id FROM votes WHERE name_key = ?').get(normalizeName(name));
-  res.json({ voted: !!row });
+app.get('/api/check', async (req, res) => {
+  try {
+    const name = (req.query.name || '').toString();
+    if (!name) return res.json({ voted: false });
+    const result = await pool.query('SELECT 1 FROM votes WHERE normalized_name = $1 LIMIT 1', [normalizeName(name)]);
+    res.json({ voted: result.rowCount > 0 });
+  } catch (err) {
+    console.error('GET /api/check failed:', err.code || '', err.message);
+    res.status(500).json({ voted: false });
+  }
 });
 
 // ---------- Admin auth ----------
@@ -158,48 +181,67 @@ function requireAdmin(req, res, next) {
 }
 
 // ---------- API: admin results ----------
-app.get('/api/admin/results', requireAdmin, (req, res) => {
-  const rows = db.prepare('SELECT id, full_name, choice1, choice2, submitted_at FROM votes ORDER BY submitted_at DESC, id DESC').all();
-  const totalRespondents = rows.length;
+app.get('/api/admin/results', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, full_name, choice_1 AS "choice1", choice_2 AS "choice2", submitted_at FROM votes ORDER BY submitted_at DESC, id DESC'
+    );
+    const totalRespondents = rows.length;
 
-  const tally = {};
-  OFFICIAL_NAMES.forEach(n => tally[n] = 0);
-  rows.forEach(r => {
-    if (r.choice1 in tally) tally[r.choice1]++;
-    if (r.choice2 in tally) tally[r.choice2]++;
-  });
+    const tally = {};
+    OFFICIAL_NAMES.forEach(n => tally[n] = 0);
+    rows.forEach(r => {
+      if (r.choice1 in tally) tally[r.choice1]++;
+      if (r.choice2 in tally) tally[r.choice2]++;
+    });
 
-  const results = OFFICIAL_NAMES.map(name => ({
-    name,
-    votes: tally[name],
-    percentage: totalRespondents ? +((tally[name] / totalRespondents) * 100).toFixed(1) : 0
-  })).sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
+    const results = OFFICIAL_NAMES.map(name => ({
+      name,
+      votes: tally[name],
+      percentage: totalRespondents ? +((tally[name] / totalRespondents) * 100).toFixed(1) : 0
+    })).sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
 
-  res.json({
-    totalRespondents,
-    totalVotes: totalRespondents * 2,
-    results,
-    respondents: rows
-  });
+    res.json({
+      totalRespondents,
+      totalVotes: totalRespondents * 2,
+      results,
+      respondents: rows
+    });
+  } catch (err) {
+    console.error('GET /api/admin/results failed:', err.code || '', err.message);
+    res.status(500).json({ error: 'Could not load results. Please try again.' });
+  }
 });
 
 // ---------- API: admin CSV export ----------
-app.get('/api/admin/export.csv', requireAdmin, (req, res) => {
-  const rows = db.prepare('SELECT id, full_name, choice1, choice2, submitted_at FROM votes ORDER BY id ASC').all();
-  const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const lines = ['ID,Full Name,Choice 1,Choice 2,Date/Time Submitted'];
-  rows.forEach(r => lines.push([r.id, r.full_name, r.choice1, r.choice2, r.submitted_at].map(esc).join(',')));
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="kataga-votes.csv"');
-  // BOM so Excel opens UTF-8 names correctly
-  res.send('\uFEFF' + lines.join('\r\n'));
+app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, full_name, choice_1 AS "choice1", choice_2 AS "choice2", submitted_at FROM votes ORDER BY id ASC'
+    );
+    const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const lines = ['ID,Full Name,Choice 1,Choice 2,Date/Time Submitted'];
+    rows.forEach(r => lines.push([r.id, r.full_name, r.choice1, r.choice2, r.submitted_at].map(esc).join(',')));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="kataga-votes.csv"');
+    // BOM so Excel opens UTF-8 names correctly
+    res.send('\uFEFF' + lines.join('\r\n'));
+  } catch (err) {
+    console.error('GET /api/admin/export.csv failed:', err.code || '', err.message);
+    res.status(500).json({ error: 'Could not export data. Please try again.' });
+  }
 });
 
 // ---------- API: admin delete a respondent (with client-side confirmation) ----------
-app.delete('/api/admin/respondent/:id', requireAdmin, (req, res) => {
-  const info = db.prepare('DELETE FROM votes WHERE id = ?').run(Number(req.params.id) || 0);
-  if (info.changes === 0) return res.status(404).json({ error: 'Respondent not found.' });
-  res.json({ ok: true });
+app.delete('/api/admin/respondent/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM votes WHERE id = $1', [Number(req.params.id) || 0]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Respondent not found.' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /api/admin/respondent failed:', err.code || '', err.message);
+    res.status(500).json({ error: 'Could not delete respondent. Please try again.' });
+  }
 });
 
 // ---------- Routes ----------
@@ -207,7 +249,16 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
 // ---------- Start ----------
-app.listen(PORT, '0.0.0.0', () => {
+(async () => {
+  try {
+    await initDb();
+    console.log('  PostgreSQL schema ready (votes table + unique index).');
+  } catch (err) {
+    console.error('FATAL: could not initialize PostgreSQL schema:', err.code || '', err.message);
+    process.exit(1);
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
   const nets = os.networkInterfaces();
   let lanIps = [];
   Object.values(nets).flat().forEach(n => {

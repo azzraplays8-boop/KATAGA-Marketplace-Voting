@@ -55,7 +55,7 @@ This device:
 http://localhost:3000
 
 Other devices on the same Wi-Fi:
-http://192.168.x.x:3000     ← your laptop's detected IPv4 address
+http://192.168.x.nx:3000     ← your laptop's detected IPv4 address
 ```
 
 ## 4. Open the voting page
