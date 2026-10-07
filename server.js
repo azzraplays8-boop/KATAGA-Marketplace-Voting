@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const { Pool } = require('pg');
 const nameGuard = require('./nameGuard');
+const memberRegistry = require('./memberRegistry');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -234,6 +235,20 @@ app.get('/api/admin/results', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('GET /api/admin/results failed:', err.code || '', err.message);
     res.status(500).json({ error: 'Could not load results. Please try again.' });
+  }
+});
+
+// ---------- API: admin member voting status (admin-only, read-only) ----------
+// Uses the EXISTING votes data. Never modifies or deletes anything.
+app.get('/api/admin/members', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, full_name, submitted_at FROM votes ORDER BY submitted_at ASC, id ASC'
+    );
+    res.json(memberRegistry.buildMemberReport(rows));
+  } catch (err) {
+    console.error('GET /api/admin/members failed:', err.code || '', err.message);
+    res.status(500).json({ error: 'Could not load member voting status.' });
   }
 });
 

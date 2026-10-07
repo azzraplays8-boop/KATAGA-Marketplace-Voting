@@ -313,6 +313,45 @@ input:focus {
   vertical-align: middle;
 }
 
+/* ---------- Member Voting Status (admin) ---------- */
+.member-stats {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.member-stats .stat-value { font-size: 1.9rem; }
+.voted-color { color: var(--ok); }
+.pending-color { color: var(--accent-dark); }
+.review-color { color: var(--danger); }
+
+.badge {
+  display: inline-block;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-voted { background: #e2f3ea; color: var(--ok); }
+.badge-pending { background: #fdf2df; color: var(--accent-dark); }
+.badge-review { background: #fdecea; color: var(--danger); }
+.member-name { font-weight: 600; }
+.muted-dash { color: var(--muted); }
+
+.member-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-filter {
+  background: var(--brand-light);
+  color: var(--brand-dark);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-filter:hover { background: #d8e8e0; }
+.btn-filter.active { background: var(--brand); color: #fff; }
+
 .table-wrap { overflow-x: auto; }
 .respondents-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 .respondents-table th, .respondents-table td {

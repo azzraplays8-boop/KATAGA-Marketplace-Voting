@@ -6,8 +6,11 @@ const loginError = document.getElementById('loginError');
 const logoutBtn = document.getElementById('logoutBtn');
 const searchBox = document.getElementById('searchBox');
 const exportBtn = document.getElementById('exportBtn');
+const memberSearchBox = document.getElementById('memberSearchBox');
 
 let resultsData = null;
+let memberData = null;
+let memberFilter = 'all';
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -43,8 +46,94 @@ async function showDashboard() {
   loginSection.hidden = true;
   dashboard.hidden = false;
   logoutBtn.hidden = false;
-  await loadResults();
+  await Promise.all([loadResults(), loadMemberStatus()]);
 }
+
+// ---------- Member Voting Status (admin-only) ----------
+async function loadMemberStatus() {
+  try {
+    const res = await fetch('/api/admin/members');
+    if (res.status === 401) {
+      dashboard.hidden = true;
+      logoutBtn.hidden = true;
+      loginSection.hidden = false;
+      return;
+    }
+    memberData = await res.json();
+    renderMembers();
+  } catch {
+    // keep the rest of the dashboard usable if this section fails
+  }
+}
+
+function memberStatusBadge(status) {
+  if (status === 'voted') return '<span class="badge badge-voted">✅ Voted</span>';
+  if (status === 'needs_review') return '<span class="badge badge-review">⚠️ Needs Review</span>';
+  return '<span class="badge badge-pending">⏳ Not Yet Voted</span>';
+}
+
+function renderMembers() {
+  if (!memberData) return;
+  const { totalMembers, voted, notVoted, needsReview, participationRate, members, unmatchedSubmissions } = memberData;
+
+  document.getElementById('statTotalMembers').textContent = totalMembers;
+  document.getElementById('statVotedMembers').textContent = voted;
+  document.getElementById('statNotVotedMembers').textContent = notVoted;
+  document.getElementById('statReviewMembers').textContent = needsReview;
+  document.getElementById('statParticipation').textContent = participationRate + '%';
+
+  // unmatched submissions
+  const uBody = document.getElementById('unmatchedBody');
+  uBody.innerHTML = '';
+  document.getElementById('unmatchedCount').textContent = unmatchedSubmissions.length;
+  document.getElementById('noUnmatched').hidden = unmatchedSubmissions.length !== 0;
+  unmatchedSubmissions.forEach(u => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(u.submittedName)}</td>
+      <td>${escapeHtml(u.submittedAt)}</td>
+      <td>${u.possibleMatches && u.possibleMatches.length ? escapeHtml(u.possibleMatches.join('; ')) : '<em>none — insufficient information</em>'}</td>`;
+    uBody.appendChild(tr);
+  });
+
+  renderMembersTable();
+}
+
+function renderMembersTable() {
+  if (!memberData) return;
+  const q = memberSearchBox.value.trim().toLowerCase();
+  const body = document.getElementById('membersBody');
+  body.innerHTML = '';
+
+  const order = { not_voted: 0, needs_review: 1, voted: 2 };
+  let rows = memberData.members.filter(m =>
+    (memberFilter === 'all' || m.status === memberFilter) &&
+    (!q || m.name.toLowerCase().includes(q))
+  );
+  rows = rows.slice().sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+
+  document.getElementById('noMemberMatch').hidden = rows.length !== 0;
+
+  rows.forEach(m => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${memberStatusBadge(m.status)}</td>
+      <td class="member-name">${escapeHtml(m.name)}</td>
+      <td>${m.submittedName ? escapeHtml(m.submittedName) : '<span class="muted-dash">—</span>'}</td>
+      <td>${m.submittedAt ? escapeHtml(m.submittedAt) : '<span class="muted-dash">—</span>'}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+memberSearchBox.addEventListener('input', renderMembersTable);
+
+document.querySelectorAll('.btn-filter').forEach(btn => {
+  btn.addEventListener('click', () => {
+    memberFilter = btn.dataset.filter;
+    document.querySelectorAll('.btn-filter').forEach(b => b.classList.toggle('active', b === btn));
+    renderMembersTable();
+  });
+});
 
 async function loadResults() {
   try {
@@ -109,19 +198,20 @@ function renderTable() {
       <td>${escapeHtml(r.choice2)}</td>
       <td>${escapeHtml(r.submitted_at)}</td>
       <td><button class="btn btn-danger" data-id="${r.id}">Delete</button></td>`;
-    tr.querySelector('button').addEventListener('click', () => deleteRespondent(r, tr));
-    body.appendChild(tr);
-  });
-}
+      tr.querySelector('button').addEventListener('click', () => deleteRespondent(r, tr));
+      body.appendChild(tr);
+      });
+    }
 
-function deleteRespondent(r, tr) {
-  if (!confirm(`Delete the response from "${r.full_name}"?\n\nThis will permanently remove their vote from the database. This action cannot be undone.`)) return;
-  fetch(`/api/admin/respondent/${r.id}`, { method: 'DELETE' })
-    .then(res => {
-      if (res.ok) {
-        tr.remove();
-        loadResults();
-      } else {
+    function deleteRespondent(r, tr) {
+      if (!confirm(`Delete the response from "${r.full_name}"?\n\nThis will permanently remove their vote from the database. This action cannot be undone.`)) return;
+      fetch(`/api/admin/respondent/${r.id}`, { method: 'DELETE' })
+        .then(res => {
+          if (res.ok) {
+            tr.remove();
+            loadResults();
+            loadMemberStatus();
+          } else {
         alert('Failed to delete the response.');
       }
     })

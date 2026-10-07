@@ -60,6 +60,75 @@
       </section>
 
       <section class="card">
+        <div class="card-head">
+          <h2>Member Voting Status</h2>
+          <div class="card-actions">
+            <input type="search" id="memberSearchBox" placeholder="Search member by name…" aria-label="Search member by name" />
+            <div class="member-filters" role="group" aria-label="Filter members">
+              <button class="btn btn-filter active" data-filter="all">All</button>
+              <button class="btn btn-filter" data-filter="voted">Voted</button>
+              <button class="btn btn-filter" data-filter="not_voted">Not Yet Voted</button>
+              <button class="btn btn-filter" data-filter="needs_review">Needs Review</button>
+            </div>
+          </div>
+        </div>
+        <div class="stats-grid member-stats">
+          <div class="stat-card">
+            <span class="stat-value" id="statTotalMembers">0</span>
+            <span class="stat-label">Total Members</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value voted-color" id="statVotedMembers">0</span>
+            <span class="stat-label">Voted</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value pending-color" id="statNotVotedMembers">0</span>
+            <span class="stat-label">Not Yet Voted</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value review-color" id="statReviewMembers">0</span>
+            <span class="stat-label">Needs Review</span>
+          </div>
+          <div class="stat-card top-card">
+            <span class="stat-value" id="statParticipation">0%</span>
+            <span class="stat-label">Participation Rate</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="respondents-table members-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Official Name</th>
+                <th>Submitted Name</th>
+                <th>Date &amp; Time</th>
+              </tr>
+            </thead>
+            <tbody id="membersBody"></tbody>
+          </table>
+        </div>
+        <p id="noMemberMatch" class="hint" hidden>No members match your search.</p>
+      </section>
+
+      <section class="card">
+        <h2>Unmatched Submissions <span class="count-pill" id="unmatchedCount">0</span></h2>
+        <p class="hint">Vote submissions that could not be confidently matched to an official member. No vote is changed — review manually.</p>
+        <div class="table-wrap">
+          <table class="respondents-table">
+            <thead>
+              <tr>
+                <th>Submitted Name</th>
+                <th>Date &amp; Time</th>
+                <th>Possible Match</th>
+              </tr>
+            </thead>
+            <tbody id="unmatchedBody"></tbody>
+          </table>
+        </div>
+        <p id="noUnmatched" class="hint" hidden>Every submission was matched to an official member.</p>
+      </section>
+
+      <section class="card">
         <h2>All Respondents <span class="count-pill" id="respondentCount">0</span></h2>
         <div class="table-wrap">
           <table class="respondents-table">
