@@ -111,8 +111,11 @@ form.addEventListener('submit', (e) => {
   clearError();
 
   const fullName = nameInput.value.trim().replace(/\s+/g, ' ');
-  if (fullName.length < 2) {
-    showError('Please enter your full name.');
+  // Client-side convenience check (server enforces this authoritatively).
+  const meaningful = fullName.toLowerCase().replace(/\./g, ' ').split(/\s+/)
+    .filter(w => w.length >= 2 && !['de','del','dela','da','di','du','los','las','san','santa','sto','sta','jr','sr','ii','iii','iv'].includes(w));
+  if (meaningful.length < 2) {
+    showError('Please enter your full name (first name and last name).');
     nameInput.focus();
     return;
   }

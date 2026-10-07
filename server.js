@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const os = require('os');
 const { Pool } = require('pg');
+const nameGuard = require('./nameGuard');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -75,7 +76,15 @@ const OFFICIAL_NAMES = [
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const normalizeName = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+// Use the shared normalizer from nameGuard (lowercase, dot-stripped,
+// whitespace-collapsed) so stored normalized_name values and comparisons
+// are always consistent. Existing stored values are already lowercase with
+// collapsed spaces; the only addition is stripped periods, which is a
+// backward-compatible refinement (a name submitted earlier with periods
+// would have its UNIQUE key match the new form going forward).
+const normalizeName = (s) => nameGuard.normalizeName(s);
+const EXACT_DUPLICATE_MSG = 'It looks like you have already submitted your vote.';
+const LIKELY_DUPLICATE_MSG = 'It looks like you may have already submitted a vote. If you believe this is a mistake, please contact a KATAGA officer.';
 
 // ---------- API: get name options ----------
 app.get('/api/names', (req, res) => {
@@ -88,8 +97,14 @@ app.post('/api/vote', async (req, res) => {
     const fullName = typeof req.body.fullName === 'string' ? req.body.fullName.trim().replace(/\s+/g, ' ') : '';
     const { choices } = req.body;
 
-    if (!fullName || fullName.length < 2 || fullName.length > 80) {
-      return res.status(400).json({ error: 'Please enter your full name (2–80 characters).' });
+    if (!fullName) {
+      return res.status(400).json({ error: 'Please enter your full name (first name and last name).' });
+    }
+
+    // Require a proper full name (at least two meaningful name words).
+    const nameError = nameGuard.validateFullName(fullName);
+    if (nameError) {
+      return res.status(400).json({ error: nameError });
     }
 
     if (!Array.isArray(choices) || choices.length !== 2) {
@@ -109,9 +124,16 @@ app.post('/api/vote', async (req, res) => {
     // prevent double voting (also guards double clicks via UNIQUE index)
     const existing = await pool.query('SELECT id FROM votes WHERE normalized_name = $1', [nameKey]);
     if (existing.rowCount > 0) {
-      return res.status(409).json({
-        error: `A vote has already been recorded under the name "${fullName}". One response per person — thank you for participating!`
-      });
+      return res.status(409).json({ error: EXACT_DUPLICATE_MSG });
+    }
+
+    // Conservative partial-name duplicate check: load existing normalized
+    // names and compare using whole-word token logic (never substring
+    // matching). The existing voter's name is NEVER echoed back to the
+    // public API.
+    const { rows: existingNames } = await pool.query('SELECT normalized_name FROM votes');
+    if (existingNames.some(r => nameGuard.isLikelyDuplicate(nameKey, r.normalized_name))) {
+      return res.status(409).json({ error: LIKELY_DUPLICATE_MSG });
     }
 
     await pool.query(
@@ -122,7 +144,7 @@ app.post('/api/vote', async (req, res) => {
     res.json({ ok: true, message: 'Your vote has been recorded. Thank you for voting!' });
   } catch (err) {
     if (err && err.code === '23505') { // unique_violation – race-safe duplicate rejection
-      return res.status(409).json({ error: 'A vote has already been recorded under that name. One response per person.' });
+      return res.status(409).json({ error: EXACT_DUPLICATE_MSG });
     }
     console.error('POST /api/vote failed:', err.code || '', err.message);
     res.status(500).json({ error: 'Something went wrong while saving your vote. Please try again.' });
@@ -134,8 +156,10 @@ app.get('/api/check', async (req, res) => {
   try {
     const name = (req.query.name || '').toString();
     if (!name) return res.json({ voted: false });
-    const result = await pool.query('SELECT 1 FROM votes WHERE normalized_name = $1 LIMIT 1', [normalizeName(name)]);
-    res.json({ voted: result.rowCount > 0 });
+    const nameKey = normalizeName(name);
+    const result = await pool.query('SELECT normalized_name FROM votes');
+    const voted = result.rows.some(r => r.normalized_name === nameKey || nameGuard.isLikelyDuplicate(nameKey, r.normalized_name));
+    res.json({ voted });
   } catch (err) {
     console.error('GET /api/check failed:', err.code || '', err.message);
     res.status(500).json({ voted: false });
